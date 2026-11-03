@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>envelope — read an email's real headers</title>
+<meta name="description" content="Paste raw email headers and see the route the message actually took, whether SPF, DKIM and DMARC passed, and where the From, Return-Path and Reply-To addresses disagree. Runs entirely in your browser.">
+<meta name="color-scheme" content="light">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='5' fill='%2314161a'/%3E%3Cpath d='M6 10h20v13H6z' fill='none' stroke='%23e8c46a' stroke-width='1.6'/%3E%3Cpath d='M6 10l10 8 10-8' fill='none' stroke='%23e8c46a' stroke-width='1.6'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+
+<header class="masthead">
+  <div class="masthead-inner">
+    <a class="wordmark" href="./">envelope<span aria-hidden="true">✉</span></a>
+    <p class="tagline">The letter says one thing. The envelope says another.</p>
+    <nav class="masthead-links" aria-label="Page">
+      <a href="#how">How it works</a>
+      <a href="#limits">Limits</a>
+      <a href="https://github.com/dominicnkutha1-netize/envelope">Source</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+  <section class="intro">
+    <h1>Paste the headers. See who really sent it.</h1>
+    <p>
+      A suspicious email is a routing question before it is anything else. These headers
+      record every server that touched the message, what the receiving server concluded
+      about SPF, DKIM and DMARC, and whether the From address agrees with the envelope it
+      arrived in. This page reads that record and points at the disagreements.
+    </p>
+    <p class="privacy">
+      <strong>Nothing leaves the browser.</strong> There is no upload, no fetch and no
+      analytics on this page — the analysis runs in the tab. That matters when the input
+      is a real email.
+    </p>
+  </section>
+
+  <div class="layout">
+
+    <section class="panel input-panel" aria-labelledby="paste-heading">
+      <h2 id="paste-heading">Raw headers</h2>
+
+      <label class="sr-only" for="raw">Raw email headers</label>
+      <textarea id="raw" spellcheck="false" autocomplete="off" autocapitalize="off"
+        placeholder="Return-Path: &lt;bounce@example.com&gt;&#10;Received: from ...&#10;Authentication-Results: ...&#10;From: ..."></textarea>
+
+      <div class="input-actions">
+        <button type="button" id="analyse" class="primary">Analyse</button>
+        <button type="button" id="clear" class="ghost">Clear</button>
+        <span class="hint-inline">or press <kbd>Ctrl</kbd>+<kbd>Enter</kbd></span>
+      </div>
+
+      <div class="samples">
+        <span class="samples-label">Synthetic examples:</span>
+        <button type="button" class="sample" data-sample="suspicious">Forged bank email</button>
+        <button type="button" class="sample" data-sample="clean">Legitimate newsletter</button>
+      </div>
+
+      <details class="howto">
+        <summary>How to get the headers out of your mail client</summary>
+        <dl>
+          <dt>Gmail</dt>
+          <dd>Open the message → the three-dot menu next to Reply → <em>Show original</em> → <em>Copy to clipboard</em>.</dd>
+          <dt>Outlook (web)</dt>
+          <dd>Open the message → <em>More actions</em> (⋯) → <em>View</em> → <em>View message source</em>.</dd>
+          <dt>Outlook (desktop)</dt>
+          <dd>Open the message → <em>File</em> → <em>Properties</em> → copy the <em>Internet headers</em> box.</dd>
+          <dt>Apple Mail</dt>
+          <dd>Select the message → <em>View</em> → <em>Message</em> → <em>All Headers</em>.</dd>
+        </dl>
+        <p>Pasting the whole message is fine too — everything after the first blank line is ignored.</p>
+      </details>
+    </section>
+
+    <section class="panel result-panel" id="result" aria-live="polite" aria-busy="false">
+      <div class="empty">
+        <h2>Nothing analysed yet</h2>
+        <p>Paste headers on the left, or load one of the two synthetic examples. Both are
+          invented messages using reserved IP ranges and example domains: one is the shape
+          of a forged bank email, the other is a correctly authenticated newsletter.</p>
+        <p class="empty-note">The result appears here, with the delivery path, the
+          authentication results the receiving server recorded, and every finding written
+          out in words.</p>
+      </div>
+    </section>
+
+  </div>
+
+  <section id="how" class="prose">
+    <h2>How it works</h2>
+    <p>
+      An email has two identities. The <strong>envelope</strong> is what the mail servers
+      use to route and bounce it: the <code>Return-Path</code> and the <code>Received</code>
+      chain. The <strong>letter</strong> is what your mail client shows you:
+      <code>From</code>, <code>Reply-To</code>, <code>Subject</code>. Spoofing works by
+      making the second one convincing while the first says something else.
+    </p>
+    <p>The page does six things, in order:</p>
+    <ol>
+      <li><strong>Unfolds the headers.</strong> A header may be wrapped across several
+        lines (RFC 5322 folding). Received headers almost always are, usually in the middle
+        of an address or a timestamp.</li>
+      <li><strong>Rebuilds the route.</strong> <code>Received</code> headers are written
+        newest-first, so they are reversed to show the message travelling from its first
+        server to your inbox, with the delay between each hop.</li>
+      <li><strong>Reads the authentication report.</strong> SPF, DKIM and DMARC results are
+        taken from <code>Authentication-Results</code>, which the receiving server adds
+        after it has checked them.</li>
+      <li><strong>Compares the identities.</strong> <code>From</code> against
+        <code>Return-Path</code>, <code>Reply-To</code>, <code>Sender</code>,
+        <code>Message-ID</code> and the first hop — comparing registrable domains, so
+        <code>mail.example.co.za</code> and <code>example.co.za</code> are the same site.</li>
+      <li><strong>Flags the specific tricks.</strong> A display name containing a different
+        address, a punycode From domain, an invented <code>Date</code>, hop timestamps that
+        run backwards.</li>
+      <li><strong>Writes it out.</strong> Every finding gets a sentence explaining what it
+        means and how much weight to give it — including the ones that are usually
+        innocent.</li>
+    </ol>
+    <p>
+      Nothing is scored out of ten. A number would imply a certainty this data does not
+      support; the verdict is only ever <em>consistent</em>, <em>mixed</em> or
+      <em>suspicious</em>, and each of those is defined by the findings below it.
+    </p>
+  </section>
+
+  <section id="limits" class="prose">
+    <h2>What this cannot tell you</h2>
+    <ul>
+      <li><strong>It does not re-check anything.</strong> No DNS lookups, no signature
+        verification. It reports what the receiving server recorded. If that server lied,
+        or never checked, this page cannot tell.</li>
+      <li><strong>Headers can be forged.</strong> Everything above the last trusted
+        <code>Received</code> line is written by whoever sent the message. Your provider's
+        own hop is the only one you can take at face value, which is why the route is shown
+        from the bottom up.</li>
+      <li><strong>Authentication passing is not the same as safe.</strong> A phishing site
+        can register a lookalike domain and configure SPF, DKIM and DMARC perfectly. The
+        checks prove the domain sent it, not that the domain is honest.</li>
+      <li><strong>No IP reputation or geolocation.</strong> The page makes no network
+        requests, so it cannot say whether a sending IP is on a blocklist or where it
+        is.</li>
+      <li><strong>Domain comparison is approximate.</strong> It uses a short list of
+        two-label suffixes such as <code>co.za</code> and <code>co.uk</code>, not the full
+        Public Suffix List.</li>
+      <li><strong>One message is not a campaign.</strong> A single suspicious header is a
+        reason to check through another channel, not a conclusion about the sender.</li>
+    </ul>
+  </section>
+
+  <section class="prose advice">
+    <h2>If it does look wrong</h2>
+    <ol>
+      <li>Do not use the links or the phone number in the message.</li>
+      <li>Reach the organisation through a channel you already trust — the number on your
+        card, the app, or the website you type yourself.</li>
+      <li>Report it: in Gmail, <em>Report phishing</em>; in Outlook, <em>Report</em> →
+        <em>Phishing</em>. That is what feeds the filters that protect everyone else.</li>
+      <li>If you already entered credentials, change that password and any place it was
+        reused, then turn on two-factor authentication.</li>
+    </ol>
+  </section>
+
+</main>
+
+<footer class="site-footer">
+  <p>
+    Built by <a href="https://github.com/dominicnkutha1-netize">Busokuhle&nbsp;“Dominic”&nbsp;Nkutha</a>.
+    Source on <a href="https://github.com/dominicnkutha1-netize/envelope">GitHub</a>, MIT licensed.
+  </p>
+  <p class="fine">No cookies, no storage, no network requests. The page never sees anything
+    you do not paste into it.</p>
+</footer>
+
+<script type="module" src="assets/app.js"></script>
+</body>
+</html>
